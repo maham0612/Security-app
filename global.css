@@ -1,0 +1,120 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Shawarma Stop Design System - Pixel Perfect Recreation */
+
+@layer base {
+  :root {
+    /* Shawarma Stop Brand Colors - HSL Format */
+    --background: 0 0% 100%;
+    --foreground: 220 9% 16%;
+    
+    /* Brand Primary - Shawarma Orange */
+    --brand-orange: 11 100% 64%;
+    --brand-orange-foreground: 0 0% 100%;
+    
+    /* Brand Secondary */
+    --brand-cream: 42 100% 96%;
+    --brand-yellow: 45 100% 75%;
+    --brand-red: 0 100% 64%;
+    
+    /* UI Colors */
+    --card: 0 0% 100%;
+    --card-foreground: 220 9% 16%;
+    
+    --input: 220 13% 91%;
+    --input-foreground: 220 9% 16%;
+    --input-placeholder: 220 9% 46%;
+    
+    --primary: 11 100% 64%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 220 13% 95%;
+    --secondary-foreground: 220 9% 16%;
+    
+    --muted: 220 13% 95%;
+    --muted-foreground: 220 9% 46%;
+    
+    --accent: 42 100% 96%;
+    --accent-foreground: 220 9% 16%;
+    
+    --destructive: 0 100% 64%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 220 13% 91%;
+    --ring: 11 100% 64%;
+    
+    --radius: 0.75rem;
+    
+    /* Mobile Status Bar */
+    --status-bar: 0 0% 100%;
+    --status-bar-foreground: 220 9% 16%;
+    
+    /* Gradients */
+    --gradient-orange: linear-gradient(135deg, hsl(var(--brand-orange)), hsl(11 100% 58%));
+    --gradient-cream: linear-gradient(180deg, hsl(var(--brand-cream)), hsl(42 50% 92%));
+    
+    /* Shadows */
+    --shadow-soft: 0 2px 8px -2px hsl(var(--brand-orange) / 0.1);
+    --shadow-button: 0 4px 12px -4px hsl(var(--brand-orange) / 0.3);
+    
+    /* Animation */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-inter;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+  
+  /* Mobile App Container */
+  .mobile-container {
+    @apply w-full max-w-md mx-auto bg-background min-h-screen relative overflow-hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+  
+  /* Brand Typography */
+  .brand-title {
+    @apply font-dancing text-brand-orange font-semibold;
+  }
+  
+  /* Custom Keypad */
+  .keypad-button {
+    @apply w-16 h-12 sm:w-20 sm:h-16 rounded-xl bg-muted/50 flex items-center justify-center text-lg sm:text-xl font-medium text-foreground transition-all duration-200 active:scale-95 active:bg-muted;
+  }
+  
+  /* OTP Input */
+  .otp-input {
+    @apply w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 border-border bg-background text-center text-lg sm:text-xl font-semibold text-foreground transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+  }
+  
+  .otp-input.filled {
+    @apply border-primary bg-primary/5;
+  }
+  
+  .otp-input.error {
+    @apply border-destructive bg-destructive/5;
+  }
+}
+
+@layer utilities {
+  .font-dancing {
+    font-family: 'Dancing Script', cursive;
+  }
+  
+  .font-inter {
+    font-family: 'Inter', sans-serif;
+  }
+}
