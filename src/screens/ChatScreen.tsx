@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Keyboard,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,15 +43,18 @@ interface ChatScreenProps {
   chat: Chat;
   onBack: () => void;
   onNavigateToFileShare?: () => void;
+  fileMessage?: any;
+  onFileMessageHandled?: () => void;
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileShare }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileShare, fileMessage, onFileMessageHandled }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const { user, isAdmin } = useAuth();
 
@@ -71,6 +75,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
       NotificationService.sendLocalNotification('🔔 SecureChat', 'Notifications are working! You will receive alerts for new messages.');
     }, 3000);
 
+    // Keyboard event listeners
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
     return () => {
       socketService.leaveChat(chat.id);
       socketService.off('new_message');
@@ -84,24 +97,52 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
       if (typingTimeout) {
         clearTimeout(typingTimeout);
       }
+      
+      // Remove keyboard listeners
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
     };
   }, [chat.id]);
+
+  // Handle file message from FileShareScreen
+  useEffect(() => {
+    if (fileMessage) {
+      setMessages(prev => [...prev, fileMessage]);
+      scrollToBottom();
+      onFileMessageHandled?.();
+    }
+  }, [fileMessage]);
 
   const setupSocketListeners = () => {
     socketService.on('new_message', (data) => {
       if (data.chatId === chat.id) {
-        setMessages(prev => [...prev, data]);
+        // Don't add our own messages via socket since we handle them optimistically
+        if (data.senderId === user?.id) {
+          return;
+        }
+        
+        // Check if message already exists to prevent duplicates
+        setMessages(prev => {
+          const messageExists = prev.some(msg => 
+            msg.id === data.id || 
+            (msg.senderId === data.senderId && msg.content === data.content && msg.timestamp === data.timestamp)
+          );
+          
+          if (messageExists) {
+            return prev;
+          }
+          
+          return [...prev, data];
+        });
         scrollToBottom();
         
         // Send notification for new message (only if app is in background or different chat)
-        if (data.senderId !== user?.id) {
-          console.log('🔔 New message received from:', data.senderName);
-          // Always show notification for new messages
-          NotificationService.sendLocalNotification(
-            `💬 New message from ${data.senderName}`,
-            data.content.length > 50 ? data.content.substring(0, 50) + '...' : data.content
-          );
-        }
+        console.log('🔔 New message received from:', data.senderName);
+        // Always show notification for new messages
+        NotificationService.sendLocalNotification(
+          `💬 New message from ${data.senderName}`,
+          data.content.length > 50 ? data.content.substring(0, 50) + '...' : data.content
+        );
       }
     });
 
@@ -136,20 +177,44 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
     const messageContent = newMessage.trim();
     setNewMessage('');
 
+    // Create optimistic message for immediate UI update
+    const optimisticMessage: Message = {
+      id: `temp_${Date.now()}`,
+      chatId: chat.id,
+      senderId: user?.id || '',
+      senderName: user?.name || 'You',
+      senderAvatar: user?.avatar,
+      content: messageContent,
+      type: 'text',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      isEncrypted: chat.isEncrypted,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      daysUntilExpiry: 7,
+    };
+
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage]);
+    scrollToBottom();
+
     try {
-      // Send via socket first (for real-time)
-      socketService.sendMessage(chat.id, messageContent, 'text');
-      
-      // Then send to API (for persistence)
+      // Send to API (for persistence)
       const message = await apiService.post<Message>(`/messages/chats/${chat.id}/messages`, {
         content: messageContent,
         type: 'text',
       });
 
-      // Don't add to messages here - let socket handle it to avoid duplicates
-      scrollToBottom();
+      // Replace optimistic message with real message
+      setMessages(prev => prev.map(msg => 
+        msg.id === optimisticMessage.id ? message : msg
+      ));
+      
+      // Send via socket after API success (for real-time to other users)
+      socketService.sendMessage(chat.id, messageContent, 'text');
     } catch (error) {
       console.error('Error sending message:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
       Alert.alert('Error', 'Failed to send message');
     }
   };
@@ -213,12 +278,39 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
           {!isOwnMessage && (
             <Text style={styles.senderName}>{displayName}</Text>
           )}
-          <Text style={[
-            styles.messageText,
-            isOwnMessage ? styles.ownMessageText : styles.otherMessageText
-          ]}>
-            {item.content}
-          </Text>
+          
+          {/* Handle file messages */}
+          {item.type !== 'text' ? (
+            <View style={styles.fileMessageContainer}>
+              <Text style={[
+                styles.messageText,
+                isOwnMessage ? styles.ownMessageText : styles.otherMessageText
+              ]}>
+                {item.content}
+              </Text>
+              {item.fileUrl && (
+                <TouchableOpacity 
+                  style={styles.fileMessageButton}
+                  onPress={() => {
+                    // Handle file download/preview
+                    Alert.alert('File', `File: ${item.fileName}\nSize: ${formatFileSize(item.fileSize || 0)}`);
+                  }}
+                >
+                  <Text style={styles.fileButtonText}>
+                    📎 {item.fileName || 'Download File'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <Text style={[
+              styles.messageText,
+              isOwnMessage ? styles.ownMessageText : styles.otherMessageText
+            ]}>
+              {item.content}
+            </Text>
+          )}
+          
           <View style={styles.messageFooter}>
             <Text style={[
               styles.messageTime,
@@ -233,6 +325,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
         </View>
       </View>
     );
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const renderTypingIndicator = () => {
@@ -294,7 +394,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
           ListFooterComponent={renderTypingIndicator}
         />
 
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { marginBottom: keyboardHeight > 0 ? keyboardHeight * 0.1 : 0 }]}>
           <TouchableOpacity
             style={styles.fileButton}
             onPress={onNavigateToFileShare}
@@ -310,6 +410,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
             placeholderTextColor="#999"
             multiline
             maxLength={2000}
+            textAlignVertical="top"
           />
           <TouchableOpacity
             style={[styles.sendButton, newMessage.trim() ? styles.sendButtonActive : styles.sendButtonInactive]}
@@ -479,6 +580,17 @@ const styles = StyleSheet.create({
   fileButtonText: {
     fontSize: 16,
   },
+  fileMessageContainer: {
+    marginVertical: 5,
+  },
+  fileMessageButton: {
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: '#667eea',
+  },
   textInput: {
     flex: 1,
     borderWidth: 1,
@@ -489,6 +601,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
     maxHeight: 100,
     fontSize: 16,
+    color: '#333',
+    backgroundColor: '#fff',
   },
   sendButton: {
     width: 40,

@@ -33,6 +33,7 @@ const ChatApp: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [fileMessage, setFileMessage] = useState<any>(null);
   const { user, loading } = useAuth();
 
   useEffect(() => {
@@ -122,6 +123,8 @@ const ChatApp: React.FC = () => {
             chat={selectedChat}
             onBack={() => setCurrentScreen('chatList')}
             onNavigateToFileShare={() => setCurrentScreen('fileShare')}
+            fileMessage={fileMessage}
+            onFileMessageHandled={() => setFileMessage(null)}
           />
         ) : null;
       
@@ -154,7 +157,8 @@ const ChatApp: React.FC = () => {
           <FileShareScreen
             chatId={selectedChat.id}
             onFileSent={(file) => {
-              // Handle file sent
+              // Store the file message to pass to ChatScreen
+              setFileMessage(file);
               setCurrentScreen('chat');
             }}
             onBack={() => setCurrentScreen('chat')}

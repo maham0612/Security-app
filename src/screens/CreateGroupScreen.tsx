@@ -50,8 +50,8 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onGroupCreated, o
   };
 
   const toggleUserSelection = (userId: string) => {
-    setSelectedUsers(prev => 
-      prev.includes(userId) 
+    setSelectedUsers(prev =>
+      prev.includes(userId)
         ? prev.filter(id => id !== userId)
         : [...prev, userId]
     );
@@ -95,7 +95,7 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onGroupCreated, o
 
   const renderUserItem = ({ item }: { item: User }) => {
     const isSelected = selectedUsers.includes(item.id);
-    
+
     return (
       <TouchableOpacity
         style={[styles.userItem, isSelected && styles.selectedUserItem]}
@@ -105,7 +105,7 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onGroupCreated, o
           <Text style={styles.avatarText}>👤</Text>
           {item.isOnline && <View style={styles.onlineIndicator} />}
         </View>
-        
+
         <View style={styles.userContent}>
           <Text style={styles.userName}>
             {isAdmin ? item.name : getAnonymousName(item.name)}
@@ -114,7 +114,7 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onGroupCreated, o
             {item.isOnline ? 'Online' : 'Offline'}
           </Text>
         </View>
-        
+
         <View style={[styles.checkbox, isSelected && styles.checkedBox]}>
           {isSelected && <Text style={styles.checkmark}>✓</Text>}
         </View>
@@ -152,7 +152,7 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onGroupCreated, o
           <Text style={styles.sectionTitle}>
             Select Members ({selectedUsers.length} selected)
           </Text>
-          
+
           <FlatList
             data={users}
             keyExtractor={(item) => item.id}
@@ -227,6 +227,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     backgroundColor: '#f8f9fa',
+    color: '#333',
   },
   membersSection: {
     flex: 1,

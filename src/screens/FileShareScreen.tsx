@@ -9,6 +9,8 @@ import {
   Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import FilePicker from 'react-native-file-picker';
+import { launchImageLibrary, MediaType } from 'react-native-image-picker';
 import { apiService } from '../services/api';
 
 interface FileShareScreenProps {
@@ -26,23 +28,112 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
       'Select File Type',
       'Choose the type of file you want to share',
       [
-        { text: '📷 Image', onPress: () => simulateFileSelection('image') },
-        { text: '📄 Document', onPress: () => simulateFileSelection('document') },
-        { text: '🎵 Audio', onPress: () => simulateFileSelection('audio') },
-        { text: '🎬 Video', onPress: () => simulateFileSelection('video') },
+        { text: '📷 Image', onPress: () => selectImage() },
+        { text: '📄 Document', onPress: () => selectDocument() },
+        { text: '🎵 Audio', onPress: () => selectAudio() },
+        { text: '🎬 Video', onPress: () => selectVideo() },
         { text: 'Cancel', style: 'cancel' }
       ]
     );
   };
 
-  const simulateFileSelection = (type: string) => {
-    const mockFile = {
-      name: `sample_${type}.${getFileExtension(type)}`,
-      type: type,
-      size: Math.floor(Math.random() * 10000000), // Random size
-      uri: `file://mock_${type}_file`
-    };
-    setSelectedFile(mockFile);
+  const selectImage = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo' as MediaType,
+        quality: 0.8,
+        includeBase64: false,
+      });
+
+      if (result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setSelectedFile({
+          name: asset.fileName || `image_${Date.now()}.jpg`,
+          type: 'image',
+          size: asset.fileSize || 0,
+          uri: asset.uri || '',
+          width: asset.width,
+          height: asset.height,
+        });
+      }
+    } catch (error) {
+      console.error('Error selecting image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
+  };
+
+  const selectDocument = async () => {
+    try {
+      FilePicker.showFilePicker({
+        title: 'Select Document',
+      }, (response) => {
+        if (response.didCancel || response.error) {
+          return;
+        }
+        
+        if (response.uri) {
+          setSelectedFile({
+            name: response.fileName || 'document',
+            type: 'document',
+            size: 0, // File size not available in this library
+            uri: response.uri,
+            mimeType: response.type,
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Error selecting document:', error);
+      Alert.alert('Error', 'Failed to select document');
+    }
+  };
+
+  const selectAudio = async () => {
+    try {
+      FilePicker.showFilePicker({
+        title: 'Select Audio',
+      }, (response) => {
+        if (response.didCancel || response.error) {
+          return;
+        }
+        
+        if (response.uri) {
+          setSelectedFile({
+            name: response.fileName || 'audio',
+            type: 'audio',
+            size: 0, // File size not available in this library
+            uri: response.uri,
+            mimeType: response.type,
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Error selecting audio:', error);
+      Alert.alert('Error', 'Failed to select audio');
+    }
+  };
+
+  const selectVideo = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'video' as MediaType,
+        quality: 0.8,
+        includeBase64: false,
+      });
+
+      if (result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setSelectedFile({
+          name: asset.fileName || `video_${Date.now()}.mp4`,
+          type: 'video',
+          size: asset.fileSize || 0,
+          uri: asset.uri || '',
+          duration: asset.duration,
+        });
+      }
+    } catch (error) {
+      console.error('Error selecting video:', error);
+      Alert.alert('Error', 'Failed to select video');
+    }
   };
 
 
@@ -82,15 +173,15 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
 
     setUploading(true);
     try {
-      // For now, simulate file upload since we don't have actual file picker
-      const mockResponse = {
+      // Create a simple file message without uploading to server
+      const fileMessage = {
         id: Date.now().toString(),
         chatId: chatId,
         senderId: 'current_user',
         senderName: 'You',
         content: `📎 ${selectedFile.name}`,
         type: selectedFile.type,
-        fileUrl: selectedFile.uri,
+        fileUrl: selectedFile.uri, // Use local URI for now
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
         timestamp: new Date().toISOString(),
@@ -100,17 +191,26 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
         daysUntilExpiry: 7
       };
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call the callback to add message to chat
+      onFileSent(fileMessage);
+      setSelectedFile(null);
       
       Alert.alert('Success', 'File sent successfully!');
-      onFileSent(mockResponse);
-      setSelectedFile(null);
     } catch (error) {
       console.error('Error sending file:', error);
       Alert.alert('Error', 'Failed to send file');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const getMimeType = (type: string): string => {
+    switch (type) {
+      case 'image': return 'image/jpeg';
+      case 'document': return 'application/pdf';
+      case 'audio': return 'audio/mpeg';
+      case 'video': return 'video/mp4';
+      default: return 'application/octet-stream';
     }
   };
 
