@@ -12,6 +12,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import FilePicker from 'react-native-file-picker';
 import { launchImageLibrary, MediaType } from 'react-native-image-picker';
 import { apiService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FileShareScreenProps {
   chatId: string;
@@ -22,6 +23,7 @@ interface FileShareScreenProps {
 const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, onBack }) => {
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const { user } = useAuth();
 
   const selectFile = () => {
     Alert.alert(
@@ -177,10 +179,10 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
       const fileMessage = {
         id: Date.now().toString(),
         chatId: chatId,
-        senderId: 'current_user',
-        senderName: 'You',
+        senderId: user?.id || 'current_user',
+        senderName: user?.name || 'You',
         content: `📎 ${selectedFile.name}`,
-        type: selectedFile.type,
+        type: selectedFile.type === 'document' ? 'file' : selectedFile.type, // Map document to file
         fileUrl: selectedFile.uri, // Use local URI for now
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
@@ -192,6 +194,7 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
       };
 
       // Call the callback to add message to chat
+      console.log('📎 File message created:', fileMessage);
       onFileSent(fileMessage);
       setSelectedFile(null);
       

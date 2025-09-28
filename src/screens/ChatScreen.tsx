@@ -107,7 +107,16 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
   // Handle file message from FileShareScreen
   useEffect(() => {
     if (fileMessage) {
-      setMessages(prev => [...prev, fileMessage]);
+      console.log('📨 Adding file message to chat:', fileMessage);
+      console.log('📨 File message type:', fileMessage.type);
+      console.log('📨 File message fileName:', fileMessage.fileName);
+      console.log('📨 File message fileUrl:', fileMessage.fileUrl);
+      setMessages(prev => {
+        const newMessages = [...prev, fileMessage];
+        console.log('📨 Updated messages array length:', newMessages.length);
+        console.log('📨 Last message in array:', newMessages[newMessages.length - 1]);
+        return newMessages;
+      });
       scrollToBottom();
       onFileMessageHandled?.();
     }
@@ -262,9 +271,32 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
     return `Anonymous User ${Math.abs(hash) % 10000}`;
   };
 
+  const getFileIcon = (type: string): string => {
+    switch (type) {
+      case 'image': return '🖼️';
+      case 'file': return '📄';
+      case 'document': return '📄';
+      case 'audio': return '🎵';
+      case 'video': return '🎥';
+      default: return '📁';
+    }
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === user?.id;
     const displayName = isAdmin ? item.senderName : getAnonymousName(item.senderName);
+    
+    // Debug logging for all messages
+    console.log('🎯 Rendering message:', {
+      id: item.id,
+      type: item.type,
+      content: item.content,
+      fileName: item.fileName,
+      fileUrl: item.fileUrl,
+      isOwnMessage,
+      senderId: item.senderId,
+      userId: user?.id
+    });
 
     return (
       <View style={[
@@ -282,23 +314,53 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
           {/* Handle file messages */}
           {item.type !== 'text' ? (
             <View style={styles.fileMessageContainer}>
-              <Text style={[
-                styles.messageText,
-                isOwnMessage ? styles.ownMessageText : styles.otherMessageText
-              ]}>
-                {item.content}
+              <Text style={[styles.messageText, { color: 'red', fontSize: 12 }]}>
+                DEBUG: File message detected - Type: {item.type}
               </Text>
-              {item.fileUrl && (
+              {/* Show image preview for image files */}
+              {item.type === 'image' && item.fileUrl ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image 
+                    source={{ uri: item.fileUrl }} 
+                    style={styles.imagePreview}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.imageOverlay}>
+                    <Text style={styles.imageFileName}>{item.fileName}</Text>
+                  </View>
+                </View>
+              ) : (
+                /* Show file info for non-image files */
                 <TouchableOpacity 
-                  style={styles.fileMessageButton}
+                  style={[
+                    styles.fileMessageButton,
+                    isOwnMessage ? styles.ownFileButton : styles.otherFileButton
+                  ]}
                   onPress={() => {
                     // Handle file download/preview
-                    Alert.alert('File', `File: ${item.fileName}\nSize: ${formatFileSize(item.fileSize || 0)}`);
+                    Alert.alert(
+                      'File Details', 
+                      `File: ${item.fileName}\nType: ${item.type}\nSize: ${formatFileSize(item.fileSize || 0)}`
+                    );
                   }}
                 >
-                  <Text style={styles.fileButtonText}>
-                    📎 {item.fileName || 'Download File'}
-                  </Text>
+                  <View style={styles.fileInfoContainer}>
+                    <Text style={styles.fileIcon}>{getFileIcon(item.type)}</Text>
+                    <View style={styles.fileDetails}>
+                      <Text style={[
+                        styles.fileName,
+                        isOwnMessage ? styles.ownFileName : styles.otherFileName
+                      ]}>
+                        {item.fileName || 'Unknown File'}
+                      </Text>
+                      <Text style={[
+                        styles.fileSize,
+                        isOwnMessage ? styles.ownFileSize : styles.otherFileSize
+                      ]}>
+                        {formatFileSize(item.fileSize || 0)} • {item.type.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
               )}
             </View>
@@ -584,12 +646,72 @@ const styles = StyleSheet.create({
     marginVertical: 5,
   },
   fileMessageButton: {
-    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 12,
+    padding: 12,
     marginTop: 5,
     borderWidth: 1,
+  },
+  ownFileButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  otherFileButton: {
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
     borderColor: '#667eea',
+  },
+  fileInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fileIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  fileDetails: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  ownFileName: {
+    color: 'white',
+  },
+  otherFileName: {
+    color: '#333',
+  },
+  fileSize: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
+  ownFileSize: {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  otherFileSize: {
+    color: '#666',
+  },
+  imagePreviewContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 5,
+  },
+  imagePreview: {
+    width: 200,
+    height: 150,
+  },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 8,
+  },
+  imageFileName: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
   },
   textInput: {
     flex: 1,
