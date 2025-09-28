@@ -11,6 +11,10 @@ import {
   Platform,
   Image,
   Keyboard,
+  Linking,
+  Dimensions,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
@@ -55,6 +59,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
   const [isTyping, setIsTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{uri: string, fileName: string} | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const { user, isAdmin } = useAuth();
 
@@ -286,17 +292,18 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
     const isOwnMessage = item.senderId === user?.id;
     const displayName = isAdmin ? item.senderName : getAnonymousName(item.senderName);
     
-    // Debug logging for all messages
-    console.log('🎯 Rendering message:', {
-      id: item.id,
-      type: item.type,
-      content: item.content,
-      fileName: item.fileName,
-      fileUrl: item.fileUrl,
-      isOwnMessage,
-      senderId: item.senderId,
-      userId: user?.id
-    });
+    // Debug logging for file messages only
+    if (item.type !== 'text') {
+      console.log('🎯 Rendering file message:', {
+        id: item.id,
+        type: item.type,
+        fileName: item.fileName,
+        fileUrl: item.fileUrl,
+        isOwnMessage,
+        senderId: item.senderId,
+        userId: user?.id
+      });
+    }
 
     return (
       <View style={[
@@ -314,21 +321,34 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
           {/* Handle file messages */}
           {item.type !== 'text' ? (
             <View style={styles.fileMessageContainer}>
-              <Text style={[styles.messageText, { color: 'red', fontSize: 12 }]}>
-                DEBUG: File message detected - Type: {item.type}
-              </Text>
               {/* Show image preview for image files */}
               {item.type === 'image' && item.fileUrl ? (
-                <View style={styles.imagePreviewContainer}>
+                <TouchableOpacity 
+                  style={styles.imagePreviewContainer}
+                  onPress={() => openFile(item.fileUrl!, item.fileName || 'Image', item.type)}
+                >
                   <Image 
-                    source={{ uri: item.fileUrl }} 
+                    source={{ 
+                      uri: item.fileUrl?.startsWith('http') ? item.fileUrl : `http://192.168.100.191:3000${item.fileUrl}`
+                    }} 
                     style={styles.imagePreview}
                     resizeMode="cover"
+                    onError={(error) => {
+                      console.log('❌ Image load error:', error.nativeEvent.error);
+                      console.log('❌ Image URL:', item.fileUrl?.startsWith('http') ? item.fileUrl : `http://192.168.100.191:3000${item.fileUrl}`);
+                    }}
+                    onLoad={() => {
+                      console.log('✅ Image loaded successfully:', item.fileUrl);
+                    }}
                   />
                   <View style={styles.imageOverlay}>
                     <Text style={styles.imageFileName}>{item.fileName}</Text>
+                    <Text style={styles.imageFileSize}>{formatFileSize(item.fileSize || 0)}</Text>
                   </View>
-                </View>
+                  <View style={styles.imagePlayButton}>
+                    <Text style={styles.playButtonText}>👁️</Text>
+                  </View>
+                </TouchableOpacity>
               ) : (
                 /* Show file info for non-image files */
                 <TouchableOpacity 
@@ -336,21 +356,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
                     styles.fileMessageButton,
                     isOwnMessage ? styles.ownFileButton : styles.otherFileButton
                   ]}
-                  onPress={() => {
-                    // Handle file download/preview
-                    Alert.alert(
-                      'File Details', 
-                      `File: ${item.fileName}\nType: ${item.type}\nSize: ${formatFileSize(item.fileSize || 0)}`
-                    );
-                  }}
+                  onPress={() => openFile(item.fileUrl || '', item.fileName || 'File', item.type)}
                 >
                   <View style={styles.fileInfoContainer}>
-                    <Text style={styles.fileIcon}>{getFileIcon(item.type)}</Text>
+                    <View style={styles.fileIconContainer}>
+                      <Text style={styles.fileIcon}>{getFileIcon(item.type)}</Text>
+                    </View>
                     <View style={styles.fileDetails}>
                       <Text style={[
                         styles.fileName,
                         isOwnMessage ? styles.ownFileName : styles.otherFileName
-                      ]}>
+                      ]} numberOfLines={2}>
                         {item.fileName || 'Unknown File'}
                       </Text>
                       <Text style={[
@@ -359,6 +375,9 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
                       ]}>
                         {formatFileSize(item.fileSize || 0)} • {item.type.toUpperCase()}
                       </Text>
+                    </View>
+                    <View style={styles.fileActionContainer}>
+                      <Text style={styles.fileActionIcon}>📂</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -395,6 +414,66 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const openFile = async (fileUrl: string, fileName: string, fileType: string) => {
+    try {
+      // For images, show in full-screen modal
+      if (fileType === 'image') {
+        const fullUrl = fileUrl.startsWith('http') ? fileUrl : `http://192.168.100.191:3000${fileUrl}`;
+        console.log('🖼️ Opening image URL:', fullUrl);
+        setSelectedImage({ uri: fullUrl, fileName });
+        setImageModalVisible(true);
+      } else {
+        // For other files, try to open with system apps
+        const fullUrl = fileUrl.startsWith('http') ? fileUrl : `http://192.168.100.191:3000${fileUrl}`;
+        console.log('🔗 Opening file URL:', fullUrl);
+        
+        // First try to open with system apps
+        try {
+          const canOpen = await Linking.canOpenURL(fullUrl);
+          console.log('🔗 Can open URL:', canOpen);
+          
+          if (canOpen) {
+            await Linking.openURL(fullUrl);
+            return;
+          }
+        } catch (linkError) {
+          console.log('🔗 Linking error:', linkError);
+        }
+        
+        // If system app fails, try browser
+        try {
+          const browserUrl = fullUrl;
+          const canOpenBrowser = await Linking.canOpenURL(browserUrl);
+          
+          if (canOpenBrowser) {
+            await Linking.openURL(browserUrl);
+            return;
+          }
+        } catch (browserError) {
+          console.log('🌐 Browser error:', browserError);
+        }
+        
+        // If all fails, show details
+        Alert.alert(
+          'File Details',
+          `File: ${fileName}\nType: ${fileType}\nURL: ${fullUrl}\n\nCannot open this file type directly.`,
+          [
+            { text: 'OK' },
+            { 
+              text: 'Copy URL', 
+              onPress: () => {
+                Alert.alert('URL Copied', fullUrl);
+              }
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+      Alert.alert('Error', 'Failed to open file: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   const renderTypingIndicator = () => {
@@ -483,6 +562,52 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.imageModalContainer}>
+          <View style={styles.imageModalHeader}>
+            <Text style={styles.imageModalTitle}>{selectedImage?.fileName}</Text>
+            <TouchableOpacity
+              style={styles.imageModalCloseButton}
+              onPress={() => setImageModalVisible(false)}
+            >
+              <Text style={styles.imageModalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView
+            style={styles.imageModalScrollView}
+            contentContainerStyle={styles.imageModalContent}
+            maximumZoomScale={3}
+            minimumZoomScale={1}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+          >
+            {selectedImage && (
+              <Image
+                source={{ 
+                  uri: selectedImage.uri
+                }}
+                style={styles.imageModalImage}
+                resizeMode="contain"
+                onError={(error) => {
+                  console.log('❌ Modal image load error:', error.nativeEvent.error);
+                  console.log('❌ Modal image URL:', selectedImage.uri);
+                }}
+                onLoad={() => {
+                  console.log('✅ Modal image loaded successfully:', selectedImage.uri);
+                }}
+              />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -650,30 +775,40 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 5,
     borderWidth: 1,
+    minWidth: 200,
+    maxWidth: 250,
   },
   ownFileButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   otherFileButton: {
-    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-    borderColor: '#667eea',
+    backgroundColor: '#f8f9fa',
+    borderColor: '#e9ecef',
   },
   fileInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  fileIcon: {
-    fontSize: 24,
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
+  },
+  fileIcon: {
+    fontSize: 20,
   },
   fileDetails: {
     flex: 1,
   },
   fileName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   ownFileName: {
     color: 'white',
@@ -682,7 +817,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   fileSize: {
-    fontSize: 12,
+    fontSize: 11,
     opacity: 0.8,
   },
   ownFileSize: {
@@ -691,27 +826,110 @@ const styles = StyleSheet.create({
   otherFileSize: {
     color: '#666',
   },
+  fileActionContainer: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(102, 126, 234, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fileActionIcon: {
+    fontSize: 14,
+  },
   imagePreviewContainer: {
     borderRadius: 12,
     overflow: 'hidden',
     marginTop: 5,
+    position: 'relative',
+    maxWidth: 250,
   },
   imagePreview: {
-    width: 200,
-    height: 150,
+    width: 250,
+    height: 180,
   },
   imageOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     padding: 8,
   },
   imageFileName: {
     color: 'white',
     fontSize: 12,
     fontWeight: '500',
+    marginBottom: 2,
+  },
+  imageFileSize: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 10,
+  },
+  imagePlayButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playButtonText: {
+    fontSize: 14,
+  },
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalHeader: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    zIndex: 1,
+  },
+  imageModalTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  imageModalCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  imageModalScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  imageModalContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  imageModalImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.8,
   },
   textInput: {
     flex: 1,

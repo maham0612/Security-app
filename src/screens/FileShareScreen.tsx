@@ -11,6 +11,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import FilePicker from 'react-native-file-picker';
 import { launchImageLibrary, MediaType } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -175,33 +176,62 @@ const FileShareScreen: React.FC<FileShareScreenProps> = ({ chatId, onFileSent, o
 
     setUploading(true);
     try {
-      // Create a simple file message without uploading to server
-      const fileMessage = {
-        id: Date.now().toString(),
-        chatId: chatId,
-        senderId: user?.id || 'current_user',
-        senderName: user?.name || 'You',
-        content: `📎 ${selectedFile.name}`,
-        type: selectedFile.type === 'document' ? 'file' : selectedFile.type, // Map document to file
-        fileUrl: selectedFile.uri, // Use local URI for now
-        fileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        timestamp: new Date().toISOString(),
-        isRead: false,
-        isEncrypted: true,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        daysUntilExpiry: 7
-      };
+      // First upload the file to backend
+      const formData = new FormData();
+      formData.append('file', {
+        uri: selectedFile.uri,
+        type: getMimeType(selectedFile.type),
+        name: selectedFile.name,
+      } as any);
+
+      console.log('📤 Uploading file to backend...');
+      const uploadResponse = await fetch('http://192.168.100.191:3000/api/files/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('File upload failed');
+      }
+
+      const uploadResult = await uploadResponse.json();
+      console.log('📤 File uploaded successfully:', uploadResult);
+
+      // Now send the message with file info
+      const messageResponse = await fetch(`http://192.168.100.191:3000/api/messages/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
+        },
+        body: JSON.stringify({
+          content: `📎 ${selectedFile.name}`,
+          type: selectedFile.type === 'document' ? 'file' : selectedFile.type,
+          fileUrl: uploadResult.url,
+          fileName: uploadResult.originalName,
+          fileSize: uploadResult.size,
+        }),
+      });
+
+      if (!messageResponse.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const message = await messageResponse.json();
+      console.log('📨 Message sent successfully:', message);
 
       // Call the callback to add message to chat
-      console.log('📎 File message created:', fileMessage);
-      onFileSent(fileMessage);
+      onFileSent(message);
       setSelectedFile(null);
       
       Alert.alert('Success', 'File sent successfully!');
     } catch (error) {
       console.error('Error sending file:', error);
-      Alert.alert('Error', 'Failed to send file');
+      Alert.alert('Error', 'Failed to send file: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setUploading(false);
     }

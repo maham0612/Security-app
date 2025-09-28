@@ -96,20 +96,26 @@ router.get('/info/:filename', authenticateToken, (req, res) => {
   }
 });
 
-// Serve files (read-only access)
-router.get('/:filename', authenticateToken, (req, res) => {
+// Serve files (read-only access) - No authentication for now to test
+router.get('/:filename', (req, res) => {
   try {
     const filename = req.params.filename;
     const filePath = path.join('uploads', filename);
 
+    console.log('📁 Serving file:', filename, 'from path:', filePath);
+
     if (!fs.existsSync(filePath)) {
+      console.log('❌ File not found:', filePath);
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // Set headers to prevent download
+    // Set headers to prevent download and allow inline viewing
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Allow CORS
     
+    console.log('✅ Serving file successfully:', filename);
     res.sendFile(path.resolve(filePath));
   } catch (error) {
     console.error('Serve file error:', error);
