@@ -134,7 +134,7 @@ router.post('/chats/:chatId/messages', authenticateToken, upload.single('file'),
       return res.status(404).json({ message: 'Chat not found' });
     }
 
-    // Handle file upload
+    // Handle file info from either uploaded multipart or from JSON body (already uploaded via /api/files/upload)
     let fileUrl = null;
     let fileName = null;
     let fileSize = null;
@@ -143,6 +143,11 @@ router.post('/chats/:chatId/messages', authenticateToken, upload.single('file'),
       fileUrl = `/uploads/${req.file.filename}`;
       fileName = req.file.originalname;
       fileSize = req.file.size;
+    } else if (req.body.fileUrl) {
+      // Allow client to pass file metadata when file was uploaded separately
+      fileUrl = req.body.fileUrl;
+      fileName = req.body.fileName || null;
+      fileSize = req.body.fileSize || null;
     }
 
     // Create message with automatic 1-week expiry

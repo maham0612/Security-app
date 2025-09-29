@@ -17,6 +17,7 @@ import {
   ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { WebView } from 'react-native-webview';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import { socketService } from '../services/socket';
@@ -59,6 +60,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
   const [isTyping, setIsTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{uri: string, fileName: string} | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -349,6 +351,75 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ chat, onBack, onNavigateToFileS
                     <Text style={styles.playButtonText}>👁️</Text>
                   </View>
                 </TouchableOpacity>
+              ) : item.type === 'audio' && item.fileUrl ? (
+                <View style={[styles.fileMessageButton, isOwnMessage ? styles.ownFileButton : styles.otherFileButton]}>
+                  <View style={styles.fileInfoContainer}>
+                    <View style={styles.fileIconContainer}>
+                      <Text style={styles.fileIcon}>🎵</Text>
+                    </View>
+                    <View style={styles.fileDetails}>
+                      <Text style={[styles.fileName, isOwnMessage ? styles.ownFileName : styles.otherFileName]} numberOfLines={1}>
+                        {item.fileName || 'Audio'}
+                      </Text>
+                      <Text style={[styles.fileSize, isOwnMessage ? styles.ownFileSize : styles.otherFileSize]}>
+                        {formatFileSize(item.fileSize || 0)} • AUDIO
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => setPlayingAudioId(prev => prev === item.id ? null : item.id)} 
+                      style={styles.fileActionContainer}
+                    >
+                      <Text style={styles.fileActionIcon}>{playingAudioId === item.id ? '⏸️' : '▶️'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {/* Inline audio player via WebView with custom controls (reliable on Android) */}
+                  {playingAudioId === item.id && (
+                    <View style={{ height: 56, marginTop: 8, overflow: 'hidden', borderRadius: 8 }}>
+                      <WebView
+                        originWhitelist={["*"]}
+                        javaScriptEnabled
+                        domStorageEnabled
+                        scrollEnabled={false}
+                        mixedContentMode="always"
+                        mediaPlaybackRequiresUserAction={false}
+                        allowsFullscreenVideo={false}
+                        allowsInlineMediaPlayback
+                        source={{
+                          html: `
+                            <!DOCTYPE html>
+                            <html>
+                              <head>
+                                <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\" />
+                                <style>
+                                  html,body{margin:0;padding:0;background:transparent}
+                                  .wrap{display:flex;align-items:center;justify-content:flex-start;height:56px;padding:0 8px}
+                                  button{width:40px;height:40px;border-radius:20px;border:none;background:#2e6be6;color:#fff;font-size:18px}
+                                  .time{color:#222;margin-left:12px;font-family:Arial, sans-serif}
+                                </style>
+                              </head>
+                              <body>
+                                <div class=\"wrap\">
+                                  <button id=\"pp\">▶</button>
+                                  <span class=\"time\" id=\"t\">0:00</span>
+                                  <audio id=\"a\" src=\"${item.fileUrl?.startsWith('http') ? item.fileUrl : `http://192.168.100.191:3000${item.fileUrl}`}\" preload=\"auto\" playsinline></audio>
+                                </div>
+                                <script>
+                                  const a=document.getElementById('a');
+                                  const b=document.getElementById('pp');
+                                  const t=document.getElementById('t');
+                                  const fmt=s=>{const m=Math.floor(s/60);const r=Math.floor(s%60);return m+':'+('0'+r).slice(-2)};
+                                  b.addEventListener('click',()=>{ if(a.paused){ a.play().catch(()=>{}); b.textContent='⏸'; } else { a.pause(); b.textContent='▶'; } });
+                                  a.addEventListener('timeupdate',()=>{ t.textContent=fmt(a.currentTime); });
+                                  a.addEventListener('ended',()=>{ b.textContent='▶'; });
+                                </script>
+                              </body>
+                            </html>
+                          `
+                        }}
+                      />
+                    </View>
+                  )}
+                </View>
               ) : (
                 /* Show file info for non-image files */
                 <TouchableOpacity 
